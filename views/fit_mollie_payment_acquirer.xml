@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+     <record id="fit_acquirer_form_mollie" model="ir.ui.view">
+            <field name="name">fit.acquirer.form.mollie</field>
+            <field name="model">payment.acquirer</field>
+            <field name="inherit_id" ref="payment_mollie_official.acquirer_form_mollie"/>
+            <field name="arch" type="xml">
+                <xpath expr='//field[@name="provider"]' position='after'>
+                    <field name="mollie_incasso_type"/>
+                </xpath>
+            </field>
+        </record>
+</odoo>

@@ -1,0 +1,3 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+#fit_access_account_journal._journal,account.journal fit order.user,account.model_account_journal,base.group_user,1,0,0,0
+#access_sale_account_journal,account.journal sale order.user,account.model_account_journal,sales_team.group_sale_salesman,1,0,0,0
