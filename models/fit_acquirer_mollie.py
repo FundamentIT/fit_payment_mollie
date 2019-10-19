@@ -42,11 +42,13 @@ class FitTxMollie(mollie.TxMollie):
     def _confirm_so(self, acquirer_name=False):
         _logger.info('FIT MOLLIE _confirm_so 1!')
         super(FitTxMollie, self)._confirm_so(acquirer_name)
-        self._create_automatic_payment(acquirer_name)
-        _logger.info('FIT MOLLIE _confirm_so 2!')
+        auto_payment_success = self._create_automatic_payment(acquirer_name)
+        #if auto_payment_success:
+        _logger.info('FIT MOLLIE _confirm_so automatic payment successful: %s', auto_payment_success)
 
     def _create_automatic_payment(self, acquirer_name):
         is_contract = False
+        mollie_is_success = False
         try:
             is_contract = self.sale_order_id.order_line[0].product_id.is_contract
             _logger.info('FIT MOLLIE: validated if product is contract: %s', is_contract)
@@ -54,70 +56,68 @@ class FitTxMollie(mollie.TxMollie):
             _logger.info('FIT MOLLIE: unable to validate if product is contract, set is_contract to False.')
 
         if is_contract:
-            if self._is_valid_mollie_mandate():
+            try:
+                if self._is_valid_mollie_mandate():
 
-                acquirer = self.acquirer_id
-                amount = self.sale_order_id.amount_total
-                mollie_customer_id = self.sale_order_id.partner_id.mollie_customer_id
+                    acquirer = self.acquirer_id
+                    amount = self.sale_order_id.amount_total
+                    mollie_customer_id = self.sale_order_id.partner_id.mollie_customer_id
 
-                _logger.info('FIT MOLLIE: try to create mollie subscription')
-                mollie_api_key = acquirer._get_mollie_api_keys(acquirer.environment)['mollie_api_key']
-                url = "https://api.mollie.com/v2/customers/%s/subscriptions" % (mollie_customer_id)
-                base_url = self.env['ir.config_parameter'].sudo().get_param('web.base.url')
-                contract = self.sale_order_id.project_id
-                subscription_start = datetime.datetime.strptime(contract.recurring_next_date, '%Y-%m-%d')
-                interval = "1 " % acquirer.mollie_incasso_type
-                if acquirer.mollie_incasso_type == 'days':
-                    subscription_start = subscription_start + relativedelta(days=+1)
-                else:
-                    subscription_start = subscription_start + relativedelta(months=+1)
+                    _logger.info('FIT MOLLIE: try to create mollie subscription')
+                    mollie_api_key = acquirer._get_mollie_api_keys(acquirer.environment)['mollie_api_key']
+                    url = "https://api.mollie.com/v2/customers/%s/subscriptions" % (mollie_customer_id)
+                    base_url = self.env['ir.config_parameter'].sudo().get_param('web.base.url')
+                    contract = self.sale_order_id.project_id
+                    subscription_start = datetime.datetime.strptime(contract.recurring_next_date, '%Y-%m-%d')
+                    interval = "1 %s" % (acquirer.mollie_incasso_type)
+                    if acquirer.mollie_incasso_type == 'days':
+                        subscription_start = subscription_start + relativedelta(days=+1)
+                    else:
+                        subscription_start = subscription_start + relativedelta(months=+1)
 
-                payload = {
-                    "amount": {
-                        "currency": "EUR",
-                        "value": "{:0,.2f}".format(decimal.Decimal(str(amount)))
-                    },
-                    "description": "Automatische Incasso BCNL %s" % self.sale_order_id.display_name,
-                    "interval": interval,
-                    "mandateId": self.mollie_mandate,
-                    "startDate": subscription_start.strftime('%Y-%m-%d'),
-                    "times": int(self.sale_order_id.product_id.mollie_subscription_duration)-1,
-                    "webhookUrl": "%s%s?iscontract=%s&contract_id=%s" % (base_url, self._subscription_url, True, contract.id-1),
-                    "metadata": {
-                        "acquirer_id": self.acquirer_id.id,
-                        "contract_id": contract.id-1
+                    payload = {
+                        "amount": {
+                            "currency": "EUR",
+                            "value": "{:0,.2f}".format(decimal.Decimal(str(amount)))
+                        },
+                        "description": "Automatische Incasso BCNL %s" % self.sale_order_id.display_name,
+                        "interval": interval,
+                        "mandateId": self.mollie_mandate,
+                        "startDate": subscription_start.strftime('%Y-%m-%d'),
+                        "times": int(self.sale_order_id.product_id.mollie_subscription_duration)-1,
+                        "webhookUrl": "%s%s?iscontract=%s&contract_id=%s" % (base_url, self._subscription_url, True, contract.id-1),
+                        "metadata": {
+                            "acquirer_id": self.acquirer_id.id,
+                            "contract_id": contract.id-1
+                        }
                     }
-                }
-                headers = {'content-type': 'application/json', 'Authorization': 'Bearer ' + mollie_api_key}
+                    headers = {'content-type': 'application/json', 'Authorization': 'Bearer ' + mollie_api_key}
 
-                mollie_response = requests.post(
-                    url, data=json.dumps(payload), headers=headers).json()
+                    mollie_response = requests.post(
+                        url, data=json.dumps(payload), headers=headers).json()
 
-                try:
-                    mollie_subscription_id = mollie_response['id']
-                    mollie_is_success = True
-                except:
-                    mollie_is_success = False
+                    try:
+                        mollie_subscription_id = mollie_response['id']
+                        mollie_is_success = True
+                    except:
+                        mollie_is_success = False
 
-                if mollie_is_success:
-                    _logger.info('FIT MOLLIE: successfully created Mollie subscription, id: %s, response: %s', mollie_subscription_id,
-                                 mollie_response)
-                    self.sale_order_id.partner_id.mollie_subscription_id = mollie_subscription_id
-                else:
-                    _logger.error('FIT MOLLIE: error while creating Mollie subscription, result "%s", description %s, reponse %s',
-                                 mollie_response['status'],
-                                 mollie_response['detail'], mollie_response)
-                    error_msg = 'Er is een fout opgetreden tijdens het aanmaken van de automatische incasso voor contract %s, details: %s' % (contract.id, mollie_response)
-                    values = {
-                        'body': error_msg,
-                        'model': 'res.partner',
-                        'message_type': 'comment',
-                        'no_auto_thread': False,
-                        'res_id': self.sale_order_id.partner_id,
-                    }
-                    self.env['mail.message'].sudo().create(values)
+                    if mollie_is_success:
+                        _logger.info('FIT MOLLIE: successfully created Mollie subscription, id: %s, response: %s', mollie_subscription_id,
+                                     mollie_response)
+                        self.sale_order_id.partner_id.mollie_subscription_id = mollie_subscription_id
+                    else:
+                        _logger.error('FIT MOLLIE: error while creating Mollie subscription, result "%s", description %s, reponse %s',
+                                     mollie_response['status'],
+                                     mollie_response['detail'], mollie_response)
+                        error_msg = 'Er is een fout opgetreden tijdens het aanmaken van de automatische incasso voor contract %s, details: %s' % (contract.id, mollie_response)
+                        self.sale_order_id.partner_id.message_post(body=error_msg)
+            except Exception as e:
+                _logger.info('FIT MOLLIE: error while handling recurring payment: %s',e)
         else:
             _logger.info('FIT MOLLIE: not a contract, stop creating of recurring payment.')
+
+        return mollie_is_success
 
     def _is_valid_mollie_mandate(self):
         mollie_customer_id = self.sale_order_id.partner_id.mollie_customer_id

@@ -42,9 +42,10 @@ class FitSaleOrderLine(sale_order_line.SaleOrderLine):
             'recurring_invoices': True,
             'recurring_next_date': date_next_object
         })
+
         if order.payment_tx_id.acquirer_id.environment == 'test':
-            _logger.info('FIT MOLLIE: Mollie test environment, start CRON create invoice')
-            contract.cron_recurring_create_invoice()
+            _logger.info('FIT MOLLIE: Mollie test environment, start create recurring invoice')
+            contract.recurring_create_invoice()
 
         _logger.info('FIT MOLLIE: created contract start date: %s, end date: %s, next invoice %s, contract project %s',
                     date_start_object, date_end_object, date_next_object, contract.name)

@@ -48,11 +48,16 @@ class FitMolliePartner(models.Model):
                 mollie_incasso_view_text = mollie_incasso_view_text + '\nIncasso "%s", status: %s' % (mollie_incasso['id'], mollie_incasso[
                     'status'])
                 #mollie_subscription_details = self._get_mollie_subscription_details(mollie_incasso, headers)
+                if 'nextPaymentDate' in mollie_incasso:
+                    next_payment_date = mollie_incasso['nextPaymentDate']
+                else:
+                    next_payment_date = 'geen'
+
                 mollie_incasso_view_text = mollie_incasso_view_text + '\n\t - Betreft: %s\n\t - Start datum: %s \n\t - Aantal totaal: %s \n\t ' \
                                                                       '- Aantal over: %s\n\t - Volgende afschrijving: %s \n' % (
                     mollie_incasso['description'], mollie_incasso['startDate'], mollie_incasso['times'], mollie_incasso['timesRemaining'],
-                    mollie_incasso['nextPaymentDate'])
-                _logger.info('FIT MOLLIE: incasso aanwezig: %s', mollie_incasso, )
+                    next_payment_date)
+                _logger.info('FIT MOLLIE: incasso aanwezig: %s', mollie_incasso)
         else:
             mollie_incasso_view_text = 'Er is een fout opgetreden tijdens de communicatie met Molle: %s, details: %s\n' % ((mollie_response[
             'status']), mollie_response['detail'])
