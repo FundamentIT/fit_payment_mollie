@@ -68,7 +68,7 @@ class FitMollieController(main.MollieController):
         town = post['Town']
         country = post['Country']
         phone = post['Phone']
-        iscontract = False
+        is_contract = False
         product = None
         res_partner = None
 
@@ -81,7 +81,7 @@ class FitMollieController(main.MollieController):
                     is_contract = product_id.is_contract
                     _logger.info('FIT Mollie: found product, is contract: %s', is_contract)
 
-        if iscontract:
+        if is_contract:
             mollie_customer_id = self._get_customer_id(acquirer, res_partner)
             url = "https://api.mollie.com/v2/payments"
             payload = {
@@ -92,14 +92,14 @@ class FitMollieController(main.MollieController):
                 },
                 "customerId": mollie_customer_id,
                 "sequenceType": "first",
-                "redirectUrl": "%s%s?iscontract=%s&reference=%s" % (base_url, self._redirect_url, iscontract, orderid),
+                "redirectUrl": "%s%s?iscontract=%s&reference=%s" % (base_url, self._redirect_url, is_contract, orderid),
             }
         else:
             payload = {
                 "description": description,
                 "amount": amount,
                 #"webhookUrl": base_url + self._notify_url,
-                "redirectUrl": "%s%s?iscontract=%s&reference=%s" % (base_url, self._redirect_url, iscontract, orderid),
+                "redirectUrl": "%s%s?iscontract=%s&reference=%s" % (base_url, self._redirect_url, is_contract, orderid),
                 "metadata": {
                     "order_id": orderid,
                     "customer": {
@@ -136,7 +136,7 @@ class FitMollieController(main.MollieController):
                 raise ValidationError(error_msg)
             payment_tx.write({"acquirer_reference": mollie_response["id"]})
 
-            if iscontract:
+            if is_contract:
                 payment_url = mollie_response["_links"]["checkout"]["href"]
             else:
                 payment_url = mollie_response["links"]["paymentUrl"]

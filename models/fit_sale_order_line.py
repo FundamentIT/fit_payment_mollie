@@ -17,6 +17,21 @@ class FitSaleOrderLine(sale_order_line.SaleOrderLine):
     _inherit = 'sale.order.line'
 
     @api.multi
+    def create_contract(self):
+        """Create contract for sale order line.
+
+        Should be called on confirmation of sale order.
+        """
+        for line in self.filtered('product_id.is_contract'):
+            contract_vals = line._prepare_contract_vals()
+            contract = self.env['account.analytic.account'].create(
+                contract_vals)
+            line.contract_id = contract.id
+            if self.order_id.payment_tx_id.acquirer_id.environment == 'test':
+                _logger.info('FIT MOLLIE: Mollie test environment, start create recurring invoice')
+                contract.recurring_create_invoice()
+
+    @api.multi
     def _prepare_contract_vals(self):
         """Prepare values to create contract from template."""
         self.ensure_one()
@@ -43,9 +58,9 @@ class FitSaleOrderLine(sale_order_line.SaleOrderLine):
             'recurring_next_date': date_next_object
         })
 
-        if order.payment_tx_id.acquirer_id.environment == 'test':
-            _logger.info('FIT MOLLIE: Mollie test environment, start create recurring invoice')
-            contract.recurring_create_invoice()
+#        if order.payment_tx_id.acquirer_id.environment == 'test':
+#            _logger.info('FIT MOLLIE: Mollie test environment, start create recurring invoice')
+#            contract.recurring_create_invoice()
 
         _logger.info('FIT MOLLIE: created contract start date: %s, end date: %s, next invoice %s, contract project %s',
                     date_start_object, date_end_object, date_next_object, contract.name)
