@@ -20,6 +20,52 @@ class FitMolliePartner(models.Model):
             if partner.id <> 1 and partner.mollie_customer_id:
                 self._get_incasso_data_mollie(partner)
 
+    @api.multi
+    def cancel_mollie_subscriptions(self):
+        try:
+            for partner in self:
+                if partner.id <> 1 and partner.mollie_customer_id:
+                    self._get_incasso_data_mollie(partner)
+                    _logger.info('FIT MOLLIE: cancel subscription, start retrieving existing automatic payments for partner %s with mollie id '
+                                 '%s',
+                                 partner.name,
+                         partner.mollie_customer_id)
+                    acquirer = partner.env['payment.acquirer'].search([('provider', '=', 'mollie')], limit=1)
+                    mollie_api_key = acquirer._get_mollie_api_keys(acquirer.environment)['mollie_api_key']
+                    url = "https://api.mollie.com/v2/customers/%s/subscriptions" % (partner.mollie_customer_id)
+                    payload = {}
+                    headers = {'content-type': 'application/json', 'Authorization': 'Bearer ' + mollie_api_key}
+                    mollie_response = requests.get(url, data=json.dumps(payload), headers=headers).json()
+
+                    _logger.info('FIT MOLLIE: cancel subscription, result Mollie Subscriptions: %s', mollie_response)
+                    try:
+                        mollie_status = mollie_response['count']
+                        mollie_is_success = True
+                    except:
+                        mollie_is_success = False
+
+                    if mollie_is_success:
+                        for mollie_incasso in mollie_response['_embedded']['subscriptions']:
+                            _logger.info('FIT MOLLIE: cancel subscription, incasso aanwezig: %s, details: %s', mollie_incasso['id'],
+                                         mollie_incasso)
+                            if mollie_incasso['status'] == 'active':
+                                _logger.info('FIT MOLLIE: cancel subscription, is een actieve incasso, start annuleren')
+                                #url = "https://api.mollie.com/v2/customers/%s/subscriptions/%s", (str(partner.mollie_customer_id),
+                                #                                                                      str(mollie_incasso['id']))
+                                url = "https://api.mollie.com/v2/customers/"+str(partner.mollie_customer_id)+"/subscriptions/"+str(mollie_incasso['id'])
+                                mollie_cancel_response = requests.delete(url, data=json.dumps(payload), headers=headers).json()
+                                _logger.info('FIT MOLLIE: cancel subscription, result Mollie: %s', mollie_cancel_response)
+                                if mollie_cancel_response['status'] == "canceled":
+                                    _logger.info('FIT MOLLIE: cancel subscription successfully cancelled, stop related contract')
+                                    contract_id = mollie_cancel_response['metadata']['contract_id']
+                                    if contract_id:
+                                        _logger.info('FIT MOLLIE: cancel subscription set contract id %s to inactive (toggle_archive())', contract_id)
+                                        contract = self.env['account.analytic.account'].sudo().browse(contract_id)
+                                        if contract:
+                                            contract.toggle_active()
+                                            _logger.info('FIT MOLLIE: cancel subscription deactivated contract id %s', contract_id)
+        except BaseException as e:
+            raise
 
     def _get_incasso_data_mollie(self,partner):
         _logger.info('FIT MOLLIE: start retrieving existing automatic payments for partner %s with mollie id %s', partner.name, partner.mollie_customer_id)

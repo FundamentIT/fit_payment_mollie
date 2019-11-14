@@ -20,7 +20,7 @@
             <xpath expr="//field[@name='lang']" position="after">
                 <field name="mollie_customer_id"/>
                 <field name="mollie_subscription_id"/>
-                <field name="mollie_incasso_view"/>
+                <button string="Annuleer incasso" type="object" name="cancel_mollie_subscriptions" class="btn btn-sm"/>
             </xpath>
             <xpath expr="//page[last()]" position="after">
                 <page string="Mollie Incasso" name="mollie_incasso">

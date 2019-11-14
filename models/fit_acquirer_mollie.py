@@ -73,7 +73,7 @@ class FitTxMollie(mollie.TxMollie):
                     if acquirer.mollie_incasso_type == 'days':
                         subscription_start = subscription_start + relativedelta(days=+1)
                     else:
-                        subscription_start = subscription_start + relativedelta(months=+1)
+                        subscription_start = subscription_start + relativedelta(months=+1) + relativedelta(days=-7)
 
                     payload = {
                         "amount": {

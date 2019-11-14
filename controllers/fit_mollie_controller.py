@@ -11,7 +11,7 @@ import datetime
 
 from psycopg2.psycopg1 import cursor
 
-from odoo import http, SUPERUSER_ID, fields
+from odoo import http, SUPERUSER_ID, fields, _
 from odoo.http import request, Response
 from odoo.exceptions import ValidationError
 from ...payment_mollie_official.controllers import main
@@ -25,6 +25,17 @@ class FitMollieController(main.MollieController):
     _redirect_url = '/payment/mollie/redirect/'
     _cancel_url = '/payment/mollie/cancel/'
     _subscription_url = '/payment/mollie/subscription/'
+
+    @http.route('/accept_mollie_incasso', type='json', auth='public', website=True, csrf=False)
+    def accept_mollie_incasso(self, **kw):
+        sale_order_id = kw.get('sale_order_id')
+        is_accepted = kw.get('is_accepted')
+        sale_order = request.env['sale.order'].sudo().browse(int(sale_order_id))
+        if sale_order:
+            sale_order.write({"mollie_incasso_accept": is_accepted})
+
+        _logger.debug('FIT_MOLLIE: received Mollie accept incasso for order: %s, accepted: %s', sale_order_id,is_accepted)
+
 
     @http.route([
         '/payment/mollie/notify'],
@@ -52,9 +63,11 @@ class FitMollieController(main.MollieController):
     @http.route([
         '/payment/mollie/intermediate'], type='http', auth="none", methods=['POST'], csrf=False)
     def mollie_intermediate(self, **post):
+        _logger.info('FIT_MOLLIE: received Mollie intermediate: %s', post)
         acquirer = request.env['payment.acquirer'].browse(int(post['Key']))
         url = post['URL'] + "payments"
-        headers = {'content-type': 'application/json', 'Authorization': 'Bearer ' + acquirer._get_mollie_api_keys(acquirer.environment)['mollie_api_key'] }
+        headers = {'content-type': 'application/json',
+                   'Authorization': 'Bearer ' + acquirer._get_mollie_api_keys(acquirer.environment)['mollie_api_key']}
         base_url = post['BaseUrl']
         orderid = post['OrderId']
         description = post['Description']
@@ -98,7 +111,7 @@ class FitMollieController(main.MollieController):
             payload = {
                 "description": description,
                 "amount": amount,
-                #"webhookUrl": base_url + self._notify_url,
+                # "webhookUrl": base_url + self._notify_url,
                 "redirectUrl": "%s%s?iscontract=%s&reference=%s" % (base_url, self._redirect_url, is_contract, orderid),
                 "metadata": {
                     "order_id": orderid,
@@ -118,9 +131,11 @@ class FitMollieController(main.MollieController):
 
         mollie_response = requests.post(
             url, data=json.dumps(payload), headers=headers).json()
+        _logger.debug('FIT MOLLIE: intermediate Mollie response: %s', mollie_response)
 
         if mollie_response["status"] == 410:
-            _logger.error('FIT MOLLIE: invalid customer ID %s, clear customer id and redirect to payment to restart validation', mollie_customer_id)
+            _logger.error('FIT MOLLIE: invalid customer ID %s, clear customer id and redirect to payment to restart validation',
+                          mollie_customer_id)
             res_partner.mollie_customer_id = ''
             return werkzeug.utils.redirect("/shop/payment")
 
@@ -162,8 +177,8 @@ class FitMollieController(main.MollieController):
         contract_id = post["contract_id"]
         account_journal = request.env['account.journal'].sudo().browse(int(acquirer.journal_id))
         if mollie_response["status"] == "paid":
-            contract = request.env['account.analytic.account'].sudo().search([("id", '=', contract_id)], limit=1)
-            for account_invoice_id in contract.account_invoice_ids:
+            contract = request.env['account.analytic.account'].sudo().search([("id", '=', contract_id)], limit=1)#, order='date_invoice asc'
+            for account_invoice_id in sorted(contract.account_invoice_ids, reverse=True):
                 _logger.info('FIT MOLLIE: Handle invoice %s fom contract %s', account_invoice_id.id, contract_id)
                 account_invoice = request.env['account.invoice'].sudo().browse(int(account_invoice_id.id))
                 if account_invoice.state == 'draft':
@@ -204,6 +219,8 @@ class FitWebsiteSale(website_sale_main.WebsiteSale):
         valid_contract_amount = self._is_valid_contract_amount(order)
         valid_product = self._is_valid_products(order)
         active_contract = self._is_active_contract(order)
+        contains_contract = self._contains_contract(order)
+        subscription_accepted = order.mollie_incasso_accept
 
         if order:
             from_currency = order.company_id.currency_id
@@ -219,6 +236,8 @@ class FitWebsiteSale(website_sale_main.WebsiteSale):
             'valid_contract_amount': valid_contract_amount,
             'valid_product': valid_product,
             'active_contract': active_contract,
+            'contains_contract': contains_contract,
+            'subscription_accepted': subscription_accepted,
         }
 
         if order:
@@ -242,8 +261,9 @@ class FitWebsiteSale(website_sale_main.WebsiteSale):
         valid_contract_amount = self._is_valid_contract_amount(order)
         valid_product = self._is_valid_products(order)
         active_contract = self._is_active_contract(order)
+        subscription_accepted = order.mollie_incasso_accept
 
-        if not valid_contract_amount or not valid_product or active_contract:
+        if not subscription_accepted or not valid_contract_amount or not valid_product or active_contract:
             return request.redirect("/shop/cart")
         else:
             redirection = self.checkout_redirection(order)
@@ -304,11 +324,21 @@ class FitWebsiteSale(website_sale_main.WebsiteSale):
                     else:
                         contains_other = True
 
-        _logger.info('FIT Mollie: cart check is valid product, contains contract: %s, contains other: %s',contains_contract, contains_other)
+        _logger.info('FIT Mollie: cart check is valid product, contains contract: %s, contains other: %s', contains_contract, contains_other)
         if contains_contract and contains_other:
             return False
         return True
 
+    def _contains_contract(self, order):
+        contains_contract = False
+        if order:
+            for order_line in order.order_line:
+                for product_id in order_line.product_id:
+                    if product_id.is_contract:
+                        contains_contract = True
+
+        _logger.info('FIT Mollie: cart check, contains contract: %s', contains_contract)
+        return contains_contract
 
     def _check_cart(self, order):
         contains_contract = False

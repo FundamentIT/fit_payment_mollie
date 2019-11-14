@@ -7,14 +7,21 @@ import datetime
 import logging
 
 from odoo import api, fields, models
-from ...product_contract.models import sale_order_line
+from ...product_contract.models import sale_order_line, sale_order
 from dateutil.relativedelta import relativedelta
 
 _logger = logging.getLogger(__name__)
 
 
+class FitSaleOrder(models.Model):
+    _inherit = 'sale.order'
+
+    mollie_incasso_accept = fields.Boolean(string='Accepteer incasso voorwaarden', required=True)
+
 class FitSaleOrderLine(sale_order_line.SaleOrderLine):
     _inherit = 'sale.order.line'
+
+    #mollie_incasso_accept = fields.Boolean('Ik accepteer de <a href="#">details</a> betreffende automatische incasso')
 
     @api.multi
     def create_contract(self):
@@ -27,7 +34,7 @@ class FitSaleOrderLine(sale_order_line.SaleOrderLine):
             contract = self.env['account.analytic.account'].create(
                 contract_vals)
             line.contract_id = contract.id
-            if self.order_id.payment_tx_id.acquirer_id.environment == 'test':
+            if self.order_id.payment_tx_id.acquirer_id.mollie_incasso_type == 'days':
                 _logger.info('FIT MOLLIE: Mollie test environment, start create recurring invoice')
                 contract.recurring_create_invoice()
 
@@ -45,8 +52,8 @@ class FitSaleOrderLine(sale_order_line.SaleOrderLine):
             date_next_object = date_start_object
             date_end_object = date_start_object + relativedelta(days=+contract_duration)
         elif order.payment_tx_id.acquirer_id.mollie_incasso_type == 'months':
-            date_next_object = date_start_object + relativedelta(months=+1) + relativedelta(days=-1)
-            date_end_object = date_start_object + relativedelta(months=+contract_duration)
+            date_next_object = date_start_object + relativedelta(months=+1) + relativedelta(days=-7)
+            date_end_object = date_start_object + relativedelta(months=+contract_duration)+ relativedelta(days=-7)
 
         contract = self.env['account.analytic.account'].new({
             'contract_template_id': contract_tmpl.id,

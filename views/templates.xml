@@ -1,7 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+
+     <template id="assets_frontend_for_quote" inherit_id="website.assets_frontend">
+        <xpath expr="." position="inside">
+            <script type="text/javascript" src="/fit_payment_mollie/static/src/js/modal.js"></script>
+        </xpath>
+    </template>
+
+    <!-- Add checkbox to payment screen -->
+    <template id="payment" inherit_id="website_sale.cart_lines">
+        <xpath expr="//table[@id='cart_products']" position="after">
+            <t t-if="contains_contract">
+                <input type="hidden" name="website_sale_order_id" value="3487" id="website_sale_order_id"
+                       t-att-value="website_sale_order.id"/>
+                <input type="checkbox" id="website_sale_order_mollie_incasso_accept" name="website_sale_order_mollie_incasso_accept"
+                       t-att-checked="website_sale_order.mollie_incasso_accept"/>
+                <span>Ik accepteer de <a href="/voorwaarden_incasso" target="_new">voorwaarden</a> betreffende automatische incasso.</span>
+                <br/>
+            </t>
+        </xpath>
+    </template>
+
     <!-- Add warning on website cart page -->
-    <template id="payment" inherit_id="website_sale.cart">
+    <template id="fit_incasso_checks" inherit_id="website_sale.cart">
         <xpath expr="//h1" position="after">
             <t t-if="not valid_product">
                 <div class="alert alert-danger">
@@ -18,10 +39,17 @@
             <t t-if="active_contract">
                 <div class="alert alert-danger">
                     <strong>Let op!</strong><br/>
-                    Je hebt al een actieve automatische incasso.<br/>
+                    Je hebt een actieve automatische incasso.<br/>
                     Mocht dit niet kloppen neem dan a.u.b. contact met ons op.
                 </div>
             </t>
+             <t t-if="not subscription_accepted">
+                <div class="alert alert-info">
+                    <strong>Let op!</strong><br/>
+                    U dient de voorwaarden van de automatische incasso te accepteren alvorens de betaling uit te kunnen voeren.<br/>
+                </div>
+            </t>
         </xpath>
+
     </template>
 </odoo>
